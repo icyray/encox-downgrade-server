@@ -1,4 +1,5 @@
 firmware.bin
+dec_firmware.bin
 /__pycache__
 /build
 /dist
