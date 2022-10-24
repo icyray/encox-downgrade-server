@@ -4,3 +4,7 @@ dec_firmware.bin
 /build
 /dist
 downgradeServer.spec
+build.cmd
+/update_checker/__pycache__
+/update_checker/*.json
+/update_checker/*.bin
