@@ -10,12 +10,15 @@ import os
 import sys
 import platform
 import re
+from enum import Enum
+
+from update_checker.get_devices import getDevice
 
 PORT = 8090
 POST_URL = 'http://smarthome.iot.oppomobile.com/v1/earphone/firmwareInfo'
 GET_URL = 'http://sdk-smarthome.nearme.com.cn/firmware.bin'
 UPGRADE_VERSION = '500'
-data = {
+resp_data = {
     'code': 0,
     'data': {
         'content': [{
@@ -31,6 +34,12 @@ data = {
     'msg': '成功'
 }
 
+class TypeFirmEnc(Enum):
+    PLAIN = 0
+    ENCRYPT_1 = 1
+    ENCRYPT_2 = 2
+    INVALID = -1
+
 class Firmware:
     def __init__(self, path='firmware.bin'):
         self.path = path
@@ -41,25 +50,25 @@ class Firmware:
 
     def get_type(self):
         # 0: 未加密, 1: v1加密, 2: v2加密, -1: 无效固件
-        plain = b'\xFF\xFF\xFF\xFF\x00\x00\x00\x00\x00\x00\x00\x00'
+        plain = b'\xFF\xFF\xFF\xFF\x00'
         type1 = b'\x63\x17\x53\xA0\xE2\x08\x7E\x54'
         with open(self.path, 'rb') as f:
             head = f.read(16)
             f.seek(32)
             sign = f.read(32)
-        if head[:12] == plain:
-            return 0
+        if head[:5] == plain:
+            return TypeFirmEnc.PLAIN
         elif head[:8] == type1:
-            return 1
+            return TypeFirmEnc.ENCRYPT_1
         elif sign.isascii():
-            return 2
+            return TypeFirmEnc.ENCRYPT_2
         else:
-            return -1
+            return TypeFirmEnc.INVALID
 
     def decrypt(self):
-        if self.type <= 0:
+        if self.type == TypeFirmEnc.PLAIN:
             raise Exception('非加密固件！')
-        elif self.type == 1:
+        elif self.type == TypeFirmEnc.ENCRYPT_1:
             with open(self.path, 'rb') as enc, open(f'dec_{self.path}', 'wb') as dec:
                 key = b'\xda\x75\x15\xfb\xbc\x25\x9d\xb3'
                 enc_data = enc.read()
@@ -68,7 +77,7 @@ class Firmware:
                 dec_data = cipher.decrypt(enc_data)
                 dec.write(dec_data)
 
-        elif self.type == 2:
+        elif self.type == TypeFirmEnc.ENCRYPT_2:
             with open(self.path, 'rb') as enc, open(f'dec_{self.path}', 'wb') as dec:
                 key = enc.read(32)
                 #sign = f.read(32)
@@ -85,24 +94,25 @@ class Firmware:
                     dec.write(dec_data)
         self.path = f'dec_{self.path}'
 
-        if self.get_type():
+        if TypeFirmEnc.INVALID == self.get_type():
             raise Exception('解密固件失败！')
 
-    def get_name(self, id):
-        supported_devices = {'061410': 'OPPO Enco X', '060C10': 'OPPO Enco W51', '060810': 'OPPO Enco W31', 
-                             '060410': 'OPPO Enco Free', '050410': 'OPPO Enco M31', '060414': 'OnePlus Buds', 
-                             '068414': 'OnePlus Buds', '060814': 'OnePlus Buds Z', '068814': 'OnePlus Buds Z', 
-                             '061C10': 'OPPO Enco Play', '061810': 'OPPO Enco Air', '062410': 'OPPO Enco Buds', 
-                             '062810': 'OPPO Enco Air Lite', '062010': 'OPPO Enco Free2', '060C14': 'OnePlus Buds Pro'}
+    def get_name_by_id(self, id):
+        supported_devices = getDevice()
         return supported_devices.get(id, 'Unknown')
 
     def update_data(self):
-        data['data']['content'][0]['size'] = str(os.path.getsize(self.path))
-        data['data']['productId'] = self.id
-        data['data']['name'] = self.name
-        data['data']['updateInfo'] += f'\\n当前固件版本: {self.version}，适用于: {self.name}'
+        resp_data['data']['content'][0]['size'] = str(os.path.getsize(self.path))
+        resp_data['data']['productId'] = self.id
+        resp_data['data']['name'] = self.name
+        resp_data['data']['updateInfo'] += f'\\n当前固件版本: {self.version}，适用于: {self.name}'
         
     def get_info(self):
+        self.version = '0'
+        self.id = '0'
+        self.name = 'Unknown'
+        self.code = 'Unknown'
+
         with open(self.path, 'rb') as f:
             f.seek(-512, os.SEEK_END)
             fb = f.read()
@@ -112,7 +122,9 @@ class Firmware:
                 self.version = str(firminfo.group('ver').decode())
             if firminfo.group('id'):
                 self.id = str(firminfo.group('id').decode())
-                self.name = str(self.get_name(self.id))
+                self.name = str(self.get_name_by_id(self.id))
+            if firminfo.group('info'):
+                self.code = str(firminfo.group('info').decode())
         self.update_data()
 
 
@@ -126,7 +138,7 @@ class Proxy(SimpleHTTPRequestHandler):
             self.end_headers()
             if req_datas['productId'] == firmware.id or firmware.id == 'Unknown':
                 self.log_message('***** 已捕获升级请求！ *****')
-                self.wfile.write(json.dumps(data).encode())
+                self.wfile.write(json.dumps(resp_data).encode())
             else:
                 self.log_error('***** 不匹配的设备！此设备 ID 为 {}. *****'.format(req_datas['productId']))
                 self.wfile.write(json.dumps({'code': -1, 'msg': 'Device not support!'}).encode())
@@ -150,31 +162,32 @@ if __name__ == '__main__':
     print('请在手机上设置代理后，使用降级版欢律刷入固件。')
     try:
         firmware = Firmware()
-        if firmware.type < 0:
+        if firmware.type == TypeFirmEnc.INVALID:
             print('该固件为无效固件！')
             sys.exit(1)
-        elif firmware.type == 0:
+        elif firmware.type == TypeFirmEnc.PLAIN:
             print('检测到未加密固件！')
-        elif firmware.type > 0:
+        else:
             print('检测到加密固件！')
-            print(f'固件加密类型为 v{firmware.type} 加密，尝试解密中...')
+            print(f'固件加密类型为 {firmware.type.name} 加密，尝试解密中...')
             firmware.decrypt()
             print(f'固件解密成功，已保存为 {firmware.path} ！')
 
         print('尝试读取固件信息...')
         firmware.get_info()
-        print(f'固件读取完毕，固件版本号: {firmware.version}，适用设备 ID: {firmware.id}，设备名: {firmware.name}.')
-        if firmware.version == 0 or firmware.name == 'Unknown':
+        print(f'固件读取完毕，固件版本号: {firmware.version}，设备代码: {firmware.code}.')
+        if firmware.id != '0':
+            print(f'适用设备 ID: {firmware.id}，设备名: {firmware.name}.')
+        else:
             print('当前固件不包含适用设备信息或不完整，请谨慎操作！')
             
-
         socketserver.ThreadingTCPServer.allow_reuse_address = True
         with socketserver.ThreadingTCPServer(('', PORT), Proxy) as httpd:
             print(f'已启动降级代理服务器，端口：{PORT}')
             httpd.serve_forever()
             
     except FileNotFoundError:
-        print('请将 firmware.bin 放置在本目录下。')
+        print('请将固件重命名为 firmware.bin 放置在本目录下。')
     except Exception as e:
         print(e)
     finally:

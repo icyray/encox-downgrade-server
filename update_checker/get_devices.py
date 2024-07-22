@@ -7,8 +7,6 @@ import time
 import uuid
 import hashlib
 import hmac
-import os
-import sys
 
 def getWhiteList():
     timeStamp = str(int(time.time() * 100))
@@ -34,23 +32,14 @@ def getWhiteList():
     r_json = r.json()
     if r_json['code'] != 0:
         raise ValueError
-    whitelist = requests.get(r_json['data']['downloadUrl'])
-    with open('lastest.json','wb') as f:
-        f.write(whitelist.content)
-
-
+    whitelist = requests.get(r_json['data']['downloadUrl']).json()
+    return whitelist
 
 def getDevice():
-    with open('lastest.json', 'r', encoding='utf-8') as f:
-        whitelist = json.load(f)
-
-    devices = dict()
-    for device in whitelist["compatWhiteList"]:
-        devices[device["name"]] = device["id"]
+    whitelist = getWhiteList()
+    devices = {device["name"]: device["id"] for device in whitelist["compatWhiteList"]}
     return devices
 
 
-
 if __name__ == '__main__':
-    getWhiteList()
     print(getDevice())

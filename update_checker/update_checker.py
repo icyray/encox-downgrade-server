@@ -9,9 +9,9 @@ import hashlib
 import hmac
 import os
 import sys
-import get_devices
+from get_devices import getDevice
 
-class RemoteServer:
+class RemoteServer(object):
     def __init__(self, productId):
         self.productId = productId
 
@@ -36,26 +36,26 @@ class RemoteServer:
             'User-Agent': 'okhttp/4.6.0'
         }
         r = requests.post(url=url, headers=header, data=data, timeout=10)
-        response = r.json()
-        if response['code'] != 0:
+        self.json = r.json()
+        if self.json['code'] != 0:
             raise ValueError
-        self.__getInfo(response)
+        self.__getInfo(self.json)
         data = {'name': self.name, 'size': self.size, 'url': self.url,'version': self.version,'info': self.info, 'deviceName': self.deviceName, 'productId': self.productId}
         return data
 
-    def __getInfo(self,response):
-        self.name = response['data']['content'][0]['name']
-        self.size = response['data']['content'][0]['size']
-        self.url = response['data']['content'][0]['url']
-        self.version = response['data']['version']
-        self.info = response['data']['updateInfo']
-        self.deviceName = response['data']['name']
+    def __getInfo(self,json):
+        self.name = json['data']['content'][0]['name']
+        self.size = json['data']['content'][0]['size']
+        self.url = json['data']['content'][0]['url']
+        self.version = json['data']['version']
+        self.info = json['data']['updateInfo']
+        self.deviceName = json['data']['name']
 
 
     def printInfo(self):
         print(f'{self.deviceName} New firmware version: \033[1;33m{self.version}\033[0m.\nFirmware size: \033[1;34m{self.size}\033[0m, url: \033[1;32m{self.url}\033[0m\n{self.name}. Update info: {self.info}.')
 
-class LocalStorage:
+class LocalStorage(object):
     def __init__(self, path='data.json'):
         self.path = path
         if not os.path.exists(self.path):
@@ -93,8 +93,6 @@ if __name__ == '__main__':
                     f.write(get_bin.content)
                 local.update(data=data, history=remote.json)
             else: print(f'[{devices_id}] No new version')
-        except KeyError:
-            print('Incorrect devices_id!')
         except ValueError:
             print('Value Error!')
         except ConnectionResetError:
@@ -105,8 +103,7 @@ if __name__ == '__main__':
         print('Firmware Update Checker for OPPO TWS')
         print('Usage: update_checker.py devices_id')
         try:
-            get_devices.getWhiteList()
-            supported_devices = get_devices.getDevice()
+            supported_devices = getDevice()
         except:
             supported_devices = {'061410': 'OPPO Enco X', '060C10': 'OPPO Enco W51', '060810': 'OPPO Enco W31', 
                  '060410': 'OPPO Enco Free', '050410': 'OPPO Enco M31', '060414': 'OnePlus Buds', 
