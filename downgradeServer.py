@@ -15,7 +15,7 @@ from enum import Enum
 from update_checker.get_devices import getDevice
 
 PORT = 8090
-POST_URL = 'http://smarthome.iot.oppomobile.com/v1/earphone/firmwareInfo'
+POST_PATTERN = r'^http:\/\/[\w.-]+\/v1\/earphone\/firmwareInfo$'
 GET_URL = 'http://sdk-smarthome.nearme.com.cn/firmware.bin'
 UPGRADE_VERSION = '500'
 resp_data = {
@@ -28,7 +28,7 @@ resp_data = {
         }],
         'name': '__product_name__',
         'productId': '__product_id__',
-        'updateInfo': '降级代理成功！酷安@icyray',
+        'updateInfo': '降级代理成功！\nSuccessfully downgraded proxy',
         'version': UPGRADE_VERSION
     },
     'msg': '成功'
@@ -131,7 +131,7 @@ class Firmware:
 class Proxy(SimpleHTTPRequestHandler):
     def do_POST(self):
         self.log_request()
-        if self.path == POST_URL:
+        if re.match(POST_PATTERN, self.path) is not None:
             req_datas = json.loads(self.rfile.read(int(self.headers['content-length'])).decode())
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
