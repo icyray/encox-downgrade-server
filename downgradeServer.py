@@ -10,6 +10,7 @@ import os
 import sys
 import platform
 import re
+import hashlib
 from enum import Enum
 
 from update_checker.get_devices import getDevice
@@ -22,6 +23,7 @@ resp_data = {
     'code': 0,
     'data': {
         'content': [{
+            "firmwareSHA256": '__sha256__',
             'name': f'1_all_{UPGRADE_VERSION}_0.bin',
             'size': '__firmware_size__',
             'url': GET_URL
@@ -87,11 +89,7 @@ class Firmware:
 
                 cipher = AES.new(key, AES.MODE_CFB, iv, segment_size=128)
                 dec_data = cipher.decrypt(enc_data)
-                lf = dec_data[-32:].count(b'\x10')
-                if lf:
-                    dec.write(dec_data[:-lf])
-                else:
-                    dec.write(dec_data)
+                dec.write(dec_data.rstrip(b'\x10'))
         self.path = f'dec_{self.path}'
 
         if TypeFirmEnc.INVALID == self.get_type():
@@ -102,6 +100,8 @@ class Firmware:
         return supported_devices.get(id, 'Unknown')
 
     def update_data(self):
+        with open(self.path, 'rb') as f:
+            resp_data['data']['content'][0]['firmwareSHA256'] = hashlib.sha256(f.read()).hexdigest()
         resp_data['data']['content'][0]['size'] = str(os.path.getsize(self.path))
         resp_data['data']['productId'] = self.id
         resp_data['data']['name'] = self.name
@@ -116,7 +116,7 @@ class Firmware:
         with open(self.path, 'rb') as f:
             f.seek(-512, os.SEEK_END)
             fb = f.read()
-        firminfo = re.search(rb'(?:CHIP=(?P<chip>\w+)[\r\n]+)(?:(?!SW_VER)\S+=\S+[\r\n]+)*(?:SW_VER=(?P<ver>\S+)[\r\n]+){0,1}(?:(?!PID|PRODUCT_ID)\S+=\S+[\r\n]+)*(?:(?:PID=0X|PRODUCT_ID=0x)(?P<id>\w+)[\r\n]+){0,1}[\s\S]*?(?:REV_INFO=\S*:(?P<info>\w+))', fb)
+        firminfo = re.search(rb'(?:CHIP=(?P<chip>\w+)[\r\n]+)(?:(?!SW_VER)\S+=\S+[\r\n]+)*(?:SW_VER=(?P<ver>\S+)[\r\n]+){0,1}(?:(?!PID|PRODUCT_ID)\S+=\S+[\r\n]+)*(?:(?:PID=0X|PID=0x|PRODUCT_ID=0x)(?P<id>\w+)[\r\n]+){0,1}[\s\S]*?(?:REV_INFO=\S*:(?P<info>\w+))', fb)
         if firminfo:
             if firminfo.group('ver'):
                 self.version = str(firminfo.group('ver').decode())

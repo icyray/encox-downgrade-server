@@ -37,13 +37,13 @@ class RemoteServer(object):
         }
         r = requests.post(url=url, headers=header, data=data, timeout=10)
         self.json = r.json()
-        if self.json['code'] != 0:
+        if self.json['code'] != 0 or "data" not in self.json:
             raise ValueError
         self.__getInfo(self.json)
         data = {'name': self.name, 'size': self.size, 'url': self.url,'version': self.version,'info': self.info, 'deviceName': self.deviceName, 'productId': self.productId}
         return data
 
-    def __getInfo(self,json):
+    def __getInfo(self, json):
         self.name = json['data']['content'][0]['name']
         self.size = json['data']['content'][0]['size']
         self.url = json['data']['content'][0]['url']

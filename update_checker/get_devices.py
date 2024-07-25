@@ -37,7 +37,7 @@ def getWhiteList():
 
 def getDevice():
     whitelist = getWhiteList()
-    devices = {device["name"]: device["id"] for device in whitelist["compatWhiteList"]}
+    devices = {device["id"]: device["name"] for device in whitelist["compatWhiteList"]}
     return devices
 
 
